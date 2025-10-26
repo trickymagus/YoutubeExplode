@@ -96,7 +96,7 @@ internal class YoutubeHttpHandler : ClientDelegatingHandler
         if (!UrlEx.ContainsQueryParameter(request.RequestUri.Query, "hl"))
         {
             request.RequestUri = new Uri(
-                UrlEx.SetQueryParameter(request.RequestUri.OriginalString, "hl", "en")
+                UrlEx.SetQueryParameter(request.RequestUri.OriginalString, "hl", "ko")
             );
         }
 

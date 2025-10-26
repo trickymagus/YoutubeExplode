@@ -120,8 +120,8 @@ internal class VideoController(HttpClient http)
                   "osVersion": "11",
                   "platform": "MOBILE",
                   "visitorData": {{Json.Serialize(visitorData)}},
-                  "hl": "en",
-                  "gl": "US",
+                  "hl": "ko",
+                  "gl": "KR",
                   "utcOffsetMinutes": 0
                 }
               }
@@ -175,8 +175,8 @@ internal class VideoController(HttpClient http)
                   "clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
                   "clientVersion": "2.0",
                   "visitorData": {{Json.Serialize(visitorData)}},
-                  "hl": "en",
-                  "gl": "US",
+                  "hl": "ko",
+                  "gl": "KR",
                   "utcOffsetMinutes": 0
                 },
                 "thirdParty": {

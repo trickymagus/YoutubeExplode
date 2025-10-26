@@ -37,8 +37,8 @@ internal class SearchController(HttpClient http)
                 "client": {
                   "clientName": "WEB",
                   "clientVersion": "2.20210408.08.00",
-                  "hl": "en",
-                  "gl": "US",
+                  "hl": "ko",
+                  "gl": "KR",
                   "utcOffsetMinutes": 0
                 }
               }
