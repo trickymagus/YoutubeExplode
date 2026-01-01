@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +12,7 @@ using YoutubeExplode.Common;
 using YoutubeExplode.Exceptions;
 using YoutubeExplode.Playlists;
 using YoutubeExplode.Utils.Extensions;
+using YoutubeExplode.Videos;
 
 namespace YoutubeExplode.Channels;
 
@@ -19,6 +22,7 @@ namespace YoutubeExplode.Channels;
 public class ChannelClient(HttpClient http)
 {
     private readonly ChannelController _controller = new(http);
+    private readonly ChannelStreamsController _streamsController = new(http);
 
     private Channel Get(ChannelPage channelPage)
     {
@@ -115,5 +119,145 @@ public class ChannelClient(HttpClient http)
         // Replace 'UC' in the channel ID with 'UU'
         var playlistId = "UU" + channelId.Value[2..];
         return new PlaylistClient(http).GetVideosAsync(playlistId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Enumerates streams associated with the specified channel.
+    /// </summary>
+    public async IAsyncEnumerable<ChannelStreamVideo> GetStreamsAsync(
+        ChannelId channelId,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    )
+    {
+        var encounteredIds = new HashSet<VideoId>();
+        var continuationToken = default(string?);
+        var channelTitle = default(string?);
+
+        do
+        {
+            var response = await _streamsController.GetChannelStreamsResponseAsync(
+                channelId,
+                continuationToken,
+                cancellationToken
+            );
+
+            channelTitle ??= response.ChannelTitle?.NullIfWhiteSpace();
+
+            foreach (var streamData in response.Streams)
+            {
+                var videoIdRaw =
+                    streamData.Id
+                    ?? throw new YoutubeExplodeException("Failed to extract the video ID.");
+                var videoId = (VideoId)videoIdRaw;
+
+                // Don't yield the same video twice
+                if (!encounteredIds.Add(videoId))
+                    continue;
+
+                // Skip videos that clearly belong to a different channel
+                if (
+                    !string.IsNullOrWhiteSpace(streamData.ChannelId)
+                    && !string.Equals(
+                        streamData.ChannelId,
+                        channelId.Value,
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    continue;
+                }
+
+                var videoTitle =
+                    streamData.Title
+                    // Videos without title are legal
+                    // https://github.com/Tyrrrz/YoutubeExplode/issues/700
+                    ?? "";
+
+                channelTitle ??= streamData.Author?.NullIfWhiteSpace();
+
+                var videoChannelTitle =
+                    streamData.Author?.NullIfWhiteSpace()
+                    ?? channelTitle
+                    ?? throw new YoutubeExplodeException("Failed to extract the video author.");
+
+                var videoChannelId = !string.IsNullOrWhiteSpace(streamData.ChannelId)
+                    ? (ChannelId)streamData.ChannelId
+                    : channelId;
+
+                var videoThumbnails = streamData
+                    .Thumbnails.Select(t =>
+                    {
+                        var thumbnailUrl =
+                            t.Url
+                            ?? throw new YoutubeExplodeException(
+                                "Failed to extract the thumbnail URL."
+                            );
+
+                        var thumbnailWidth =
+                            t.Width
+                            ?? throw new YoutubeExplodeException(
+                                "Failed to extract the thumbnail width."
+                            );
+
+                        var thumbnailHeight =
+                            t.Height
+                            ?? throw new YoutubeExplodeException(
+                                "Failed to extract the thumbnail height."
+                            );
+
+                        var thumbnailResolution = new Resolution(thumbnailWidth, thumbnailHeight);
+
+                        return new Thumbnail(thumbnailUrl, thumbnailResolution);
+                    })
+                    .Concat(Thumbnail.GetDefaultSet(videoId))
+                    .ToArray();
+
+                var status =
+                    streamData.IsLive ? ChannelStreamStatus.Live
+                    : streamData.IsUpcoming ? ChannelStreamStatus.Upcoming
+                    : ChannelStreamStatus.Past;
+
+                yield return new ChannelStreamVideo(
+                    videoId,
+                    videoTitle,
+                    new Author(videoChannelId, videoChannelTitle),
+                    streamData.Duration,
+                    videoThumbnails,
+                    status
+                );
+            }
+
+            continuationToken = response.ContinuationToken;
+        } while (!string.IsNullOrWhiteSpace(continuationToken));
+    }
+
+    /// <summary>
+    /// Enumerates currently live streams associated with the specified channel.
+    /// </summary>
+    public async IAsyncEnumerable<ChannelStreamVideo> GetLiveStreamsAsync(
+        ChannelId channelId,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    )
+    {
+        await foreach (var stream in GetStreamsAsync(channelId, cancellationToken))
+        {
+            if (stream.Status == ChannelStreamStatus.Live)
+                yield return stream;
+        }
+    }
+
+    /// <summary>
+    /// Enumerates past streams associated with the specified channel.
+    /// </summary>
+    public async IAsyncEnumerable<ChannelStreamVideo> GetPastStreamsAsync(
+        ChannelId channelId,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    )
+    {
+        await foreach (var stream in GetStreamsAsync(channelId, cancellationToken))
+        {
+            if (stream.Status == ChannelStreamStatus.Past)
+                yield return stream;
+        }
     }
 }
