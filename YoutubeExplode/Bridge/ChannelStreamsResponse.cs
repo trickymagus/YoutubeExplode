@@ -49,7 +49,9 @@ internal partial class ChannelStreamsResponse(JsonElement content)
         }
 
         // Continuation responses often use appendContinuationItemsAction.
-        foreach (var action in contentRoot.EnumerateDescendantProperties("appendContinuationItemsAction"))
+        foreach (
+            var action in contentRoot.EnumerateDescendantProperties("appendContinuationItemsAction")
+        )
         {
             var items = action.GetPropertyOrNull("continuationItems")?.EnumerateArrayOrNull();
             if (items is null)
@@ -64,8 +66,7 @@ internal partial class ChannelStreamsResponse(JsonElement content)
                 if (!string.IsNullOrWhiteSpace(token))
                     return token;
 
-                var nextToken = item
-                    .GetPropertyOrNull("nextContinuationData")
+                var nextToken = item.GetPropertyOrNull("nextContinuationData")
                     ?.GetPropertyOrNull("continuation")
                     ?.GetStringOrNull();
 
@@ -87,8 +88,8 @@ internal partial class ChannelStreamsResponse(JsonElement content)
 
     private static string? ExtractContinuationToken(JsonElement? continuationItemRenderer)
     {
-        var token = continuationItemRenderer?
-            .GetPropertyOrNull("continuationEndpoint")
+        var token = continuationItemRenderer
+            ?.GetPropertyOrNull("continuationEndpoint")
             ?.GetPropertyOrNull("continuationCommand")
             ?.GetPropertyOrNull("token")
             ?.GetStringOrNull();
@@ -96,8 +97,8 @@ internal partial class ChannelStreamsResponse(JsonElement content)
         if (!string.IsNullOrWhiteSpace(token))
             return token;
 
-        token = continuationItemRenderer?
-            .GetPropertyOrNull("continuationCommand")
+        token = continuationItemRenderer
+            ?.GetPropertyOrNull("continuationCommand")
             ?.GetPropertyOrNull("token")
             ?.GetStringOrNull();
 
