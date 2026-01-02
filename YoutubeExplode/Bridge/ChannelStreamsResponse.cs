@@ -26,12 +26,83 @@ internal partial class ChannelStreamsResponse(JsonElement content)
             .ToArray();
 
     [Lazy]
-    public string? ContinuationToken =>
-        ContentRoot
-            .EnumerateDescendantProperties("continuationCommand")
-            .FirstOrNull()
+    public string? ContinuationToken => TryGetContinuationToken(ContentRoot);
+
+    private static string? TryGetContinuationToken(JsonElement contentRoot)
+    {
+        // Prefer continuation tokens that are part of the streams grid itself.
+        foreach (var grid in contentRoot.EnumerateDescendantProperties("richGridRenderer"))
+        {
+            var contents = grid.GetPropertyOrNull("contents")?.EnumerateArrayOrNull();
+            if (contents is null)
+                continue;
+
+            foreach (var item in contents.Value)
+            {
+                var token = ExtractContinuationToken(
+                    item.GetPropertyOrNull("continuationItemRenderer")
+                );
+
+                if (!string.IsNullOrWhiteSpace(token))
+                    return token;
+            }
+        }
+
+        // Continuation responses often use appendContinuationItemsAction.
+        foreach (var action in contentRoot.EnumerateDescendantProperties("appendContinuationItemsAction"))
+        {
+            var items = action.GetPropertyOrNull("continuationItems")?.EnumerateArrayOrNull();
+            if (items is null)
+                continue;
+
+            foreach (var item in items.Value)
+            {
+                var token = ExtractContinuationToken(
+                    item.GetPropertyOrNull("continuationItemRenderer")
+                );
+
+                if (!string.IsNullOrWhiteSpace(token))
+                    return token;
+
+                var nextToken = item
+                    .GetPropertyOrNull("nextContinuationData")
+                    ?.GetPropertyOrNull("continuation")
+                    ?.GetStringOrNull();
+
+                if (!string.IsNullOrWhiteSpace(nextToken))
+                    return nextToken;
+            }
+        }
+
+        // Fallback for formats that only expose nextContinuationData.
+        foreach (var next in contentRoot.EnumerateDescendantProperties("nextContinuationData"))
+        {
+            var token = next.GetPropertyOrNull("continuation")?.GetStringOrNull();
+            if (!string.IsNullOrWhiteSpace(token))
+                return token;
+        }
+
+        return null;
+    }
+
+    private static string? ExtractContinuationToken(JsonElement? continuationItemRenderer)
+    {
+        var token = continuationItemRenderer?
+            .GetPropertyOrNull("continuationEndpoint")
+            ?.GetPropertyOrNull("continuationCommand")
             ?.GetPropertyOrNull("token")
             ?.GetStringOrNull();
+
+        if (!string.IsNullOrWhiteSpace(token))
+            return token;
+
+        token = continuationItemRenderer?
+            .GetPropertyOrNull("continuationCommand")
+            ?.GetPropertyOrNull("token")
+            ?.GetStringOrNull();
+
+        return string.IsNullOrWhiteSpace(token) ? null : token;
+    }
 
     [Lazy]
     private JsonElement? PageHeaderRenderer =>

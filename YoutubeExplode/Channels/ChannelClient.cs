@@ -130,6 +130,7 @@ public class ChannelClient(HttpClient http)
     )
     {
         var encounteredIds = new HashSet<VideoId>();
+        var encounteredContinuationTokens = new HashSet<string>(StringComparer.Ordinal);
         var continuationToken = default(string?);
         var channelTitle = default(string?);
 
@@ -142,6 +143,8 @@ public class ChannelClient(HttpClient http)
             );
 
             channelTitle ??= response.ChannelTitle?.NullIfWhiteSpace();
+
+            var newStreamsCount = 0;
 
             foreach (var streamData in response.Streams)
             {
@@ -217,6 +220,8 @@ public class ChannelClient(HttpClient http)
                     : streamData.IsUpcoming ? ChannelStreamStatus.Upcoming
                     : ChannelStreamStatus.Past;
 
+                newStreamsCount++;
+
                 yield return new ChannelStreamVideo(
                     videoId,
                     videoTitle,
@@ -227,8 +232,18 @@ public class ChannelClient(HttpClient http)
                 );
             }
 
-            continuationToken = response.ContinuationToken;
-        } while (!string.IsNullOrWhiteSpace(continuationToken));
+            if (newStreamsCount == 0)
+                break;
+
+            var nextToken = response.ContinuationToken;
+            if (string.IsNullOrWhiteSpace(nextToken))
+                break;
+
+            if (!encounteredContinuationTokens.Add(nextToken))
+                break;
+
+            continuationToken = nextToken;
+        } while (true);
     }
 
     /// <summary>
@@ -243,6 +258,9 @@ public class ChannelClient(HttpClient http)
         {
             if (stream.Status == ChannelStreamStatus.Live)
                 yield return stream;
+            else if (stream.Status == ChannelStreamStatus.Past)
+                // Assumes streams are grouped as upcoming -> live -> past, so we can stop once past starts.
+                yield break;
         }
     }
 
